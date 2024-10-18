@@ -37,62 +37,145 @@
 
 
 
+// pipeline {
+//     agent {
+//         docker {
+//             image 'node:lts-buster-slim'
+//             args '-p 3000:3000'
+//         }
+//     }
+//     environment {
+//         CI = 'true'
+//     }
+//     stages {
+//         stage('Build') {
+//             steps {
+//                 sh 'npm install'
+//             }
+//         }
+//         stage('Test') {
+//             steps {
+//                 sh './jenkins/scripts/test.sh'
+//             }
+//         }
+//         stage('Build Docker Image') {
+//             steps {
+//                 script {
+//                     dockerImage = docker.build('node:lts-buster-slim:latest')
+//                 }
+//             }
+//         }
+//         stage('Push Docker Image') {
+//             steps {
+//                 script {
+//                     docker.withRegistry('https://registry.hub.docker.com', 'docker') {
+//                         dockerImage.push('latest')
+//                     }
+//                 }
+//             }
+//         }
+//         stage('Deliver') {
+//             steps {
+//                 sh './jenkins/scripts/deliver.sh'
+//                 input message: 'Finished using the website? (Click "Proceed" to continue)'
+//                 sh './jenkins/scripts/kill.sh'
+//             }
+//         }
+//     }
+//     post {
+//         success {
+//             mail to: 'lathasree487@gmail.com',
+//                  subject: "SUCCESS: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
+//                  body: "The pipeline has completed successfully. Job details: ${env.BUILD_URL}"
+//         }
+//         failure {
+//             mail to: 'lathasree487@gmail.com',
+//                  subject: "FAILURE: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
+//                  body: "The pipeline has failed. Job details: ${env.BUILD_URL}"
+//         }
+//     }
+// }
+
+
+
+
+
 pipeline {
-    agent {
-        docker {
-            image 'node:lts-buster-slim'
-            args '-p 3000:3000'
-        }
-    }
+    // agent {
+    //     docker {
+    //         image 'arshad200/node-docker:3.0'
+    //         args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
+    //     }
+    // }
+    agent any
+
     environment {
-        CI = 'true'
+        DOCKER_REGISTRY = 'chillakurulathasree'
+        DOCKER_IMAGE = "${DOCKER_REGISTRY}/node-react-app"
+        DOCKER_CREDENTIALS_ID = 'docker'
     }
+
     stages {
-        stage('Build') {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/jenkins-docs/simple-node-js-react-npm-app.git'
+            }
+        }
+
+        stage('Install Dependencies') {
             steps {
                 sh 'npm install'
             }
         }
-        stage('Test') {
+
+        stage('Run Tests') {
             steps {
-                sh './jenkins/scripts/test.sh'
+                sh 'npm test'
+            }
+        }
+        stage('Creating a Dockerfile') {
+            steps {
+                sh '''cat <<EOF > Dockerfile
+                FROM node:14
+                WORKDIR /app
+                COPY package*.json ./
+                RUN npm install
+                COPY . .
+                EXPOSE 3000
+                CMD ["npm", "start"]
+                '''
             }
         }
         stage('Build Docker Image') {
             steps {
                 script {
-                    dockerImage = docker.build('node:lts-buster-slim:latest')
+                    docker.build("${DOCKER_IMAGE}:${env.BUILD_ID}")
                 }
             }
         }
+
         stage('Push Docker Image') {
             steps {
                 script {
-                    docker.withRegistry('https://registry.hub.docker.com', 'docker') {
-                        dockerImage.push('latest')
+                    docker.withRegistry('', DOCKER_CREDENTIALS_ID) {
+                        docker.image("${DOCKER_IMAGE}:${env.BUILD_ID}").push()
+                        // docker.image("${DOCKER_IMAGE}:${env.BUILD_ID}").push('latest')+++
                     }
                 }
             }
         }
-        stage('Deliver') {
-            steps {
-                sh './jenkins/scripts/deliver.sh'
-                input message: 'Finished using the website? (Click "Proceed" to continue)'
-                sh './jenkins/scripts/kill.sh'
-            }
-        }
     }
+
     post {
         success {
             mail to: 'lathasree487@gmail.com',
-                 subject: "SUCCESS: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
-                 body: "The pipeline has completed successfully. Job details: ${env.BUILD_URL}"
+                 subject: "SUCCESS: Jenkins Build #${env.BUILD_ID}",
+                 body: "The Jenkins build ${env.BUILD_ID} for the Node-React app was successful!"
         }
         failure {
             mail to: 'lathasree487@gmail.com',
-                 subject: "FAILURE: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
-                 body: "The pipeline has failed. Job details: ${env.BUILD_URL}"
+                 subject: "FAILURE: Jenkins Build #${env.BUILD_ID}",
+                 body: "The Jenkins build ${env.BUILD_ID} for the Node-React app failed. Please check the logs."
         }
     }
 }
-
